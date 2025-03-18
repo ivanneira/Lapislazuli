@@ -5,11 +5,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ivanneira/lapislazuli/config"
+	"github.com/ivanneira/lapislazuli/internal/coordinator"
+	"github.com/ivanneira/lapislazuli/internal/models"
+	"github.com/ivanneira/lapislazuli/internal/processor"
 	"github.com/sirupsen/logrus"
-	"github.com/yourusername/lapislazuli/config"
-	"github.com/yourusername/lapislazuli/internal/coordinator"
-	"github.com/yourusername/lapislazuli/internal/models"
-	"github.com/yourusername/lapislazuli/internal/processor"
 )
 
 func main() {
