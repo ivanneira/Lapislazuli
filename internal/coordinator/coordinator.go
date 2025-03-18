@@ -3,8 +3,8 @@ package coordinator
 import (
 	"context"
 
-	"github.com/ivanneira/lapislazuli/internal/models"
-	"github.com/ivanneira/lapislazuli/internal/processor"
+	"github.com/ivanneira/Lapislazuli/internal/models"
+	"github.com/ivanneira/Lapislazuli/internal/processor"
 	"github.com/sirupsen/logrus"
 )
 

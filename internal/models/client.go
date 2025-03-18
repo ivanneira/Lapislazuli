@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ivanneira/lapislazuli/config"
+	"github.com/ivanneira/Lapislazuli/config"
 	"github.com/sashabaranov/go-openai"
 )
 

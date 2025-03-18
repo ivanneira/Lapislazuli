@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 
-	"github.com/ivanneira/lapislazuli/internal/models"
+	"github.com/ivanneira/Lapislazuli/internal/models"
 	"github.com/sirupsen/logrus"
 )
 

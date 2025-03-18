@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ivanneira/lapislazuli/config"
-	"github.com/ivanneira/lapislazuli/internal/coordinator"
-	"github.com/ivanneira/lapislazuli/internal/models"
-	"github.com/ivanneira/lapislazuli/internal/processor"
+	"github.com/ivanneira/Lapislazuli/config"
+	"github.com/ivanneira/Lapislazuli/internal/coordinator"
+	"github.com/ivanneira/Lapislazuli/internal/models"
+	"github.com/ivanneira/Lapislazuli/internal/processor"
 	"github.com/sirupsen/logrus"
 )
 
