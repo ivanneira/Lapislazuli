@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ivanneira/lapislazuli/config"
 	"github.com/sashabaranov/go-openai"
-	"github.com/yourusername/lapislazuli/config"
 )
 
 // LMStudioClient cliente para interactuar con la API de LMStudio

@@ -3,9 +3,9 @@ package coordinator
 import (
 	"context"
 
+	"github.com/ivanneira/lapislazuli/internal/models"
+	"github.com/ivanneira/lapislazuli/internal/processor"
 	"github.com/sirupsen/logrus"
-	"github.com/yourusername/lapislazuli/internal/models"
-	"github.com/yourusername/lapislazuli/internal/processor"
 )
 
 // Request estructura de solicitud al coordinador

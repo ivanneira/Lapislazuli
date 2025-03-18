@@ -3,8 +3,8 @@ package processor
 import (
 	"context"
 
+	"github.com/ivanneira/lapislazuli/internal/models"
 	"github.com/sirupsen/logrus"
-	"github.com/yourusername/lapislazuli/internal/models"
 )
 
 // Agent implementación del Agente Procesador
