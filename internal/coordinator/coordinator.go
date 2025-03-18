@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"strings"
 
 	"github.com/ivanneira/Lapislazuli/internal/models"
 	"github.com/ivanneira/Lapislazuli/internal/processor"
@@ -34,7 +35,7 @@ func NewAgent(processorAgent *processor.Agent, logger *logrus.Logger) *Agent {
 }
 
 // ProcessRequest procesa una solicitud completa
-func (a *Agent) ProcessRequest(ctx context.Context, request *Request) (*Response, error) {
+func (a *Agent) ProcessRequest(ctx context.Context, request *Request) (map[string]interface{}, error) {
 	a.logger.WithFields(logrus.Fields{
 		"request": request.Text,
 	}).Info("Procesando solicitud")
@@ -43,15 +44,30 @@ func (a *Agent) ProcessRequest(ctx context.Context, request *Request) (*Response
 	classification, err := a.processorAgent.ClassifyRequest(ctx, request.Text)
 	if err != nil {
 		a.logger.WithError(err).Error("Error al clasificar solicitud")
-		return &Response{
-			Text: "Error al procesar la solicitud",
-		}, err
+		return nil, err
 	}
 
-	// Por ahora, solo devolvemos la clasificación
-	// En versiones futuras, aquí iría la lógica completa del flujo
-	return &Response{
-		Text:           "Solicitud clasificada como: " + classification.Intent,
-		Classification: classification,
-	}, nil
+	// Paso 2: Extraer palabras clave del texto
+	keywords := extractKeywords(request.Text)
+
+	// Paso 3: Estructurar la respuesta en el formato solicitado
+	response := map[string]interface{}{
+		"accion":   classification.Intent,
+		"keywords": keywords,
+	}
+
+	return response, nil
+}
+
+// Función auxiliar para extraer palabras clave
+func extractKeywords(text string) []string {
+	// Lógica simple para extraer palabras clave (puede mejorarse con NLP)
+	words := strings.Fields(text)
+	keywords := []string{}
+	for _, word := range words {
+		if len(word) > 3 && !strings.Contains("quiero enviar leer llamar crear cancelar", word) {
+			keywords = append(keywords, word)
+		}
+	}
+	return keywords
 }

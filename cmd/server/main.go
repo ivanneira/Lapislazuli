@@ -46,6 +46,7 @@ func main() {
 			return
 		}
 
+		// Responder con el formato solicitado
 		c.JSON(http.StatusOK, response)
 	})
 

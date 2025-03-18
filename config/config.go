@@ -24,9 +24,9 @@ type ServerConfig struct {
 
 // LoadConfig carga la configuración desde archivo o variables de entorno
 func LoadConfig() (*Config, error) {
-	viper.SetDefault("lmstudio.endpoint", "http://192.168.1.40:1234")
+	viper.SetDefault("lmstudio.endpoint", "http://192.168.1.40:1234/v1")
 	viper.SetDefault("lmstudio.model", "gemma-3-4b-it")
-	viper.SetDefault("lmstudio.classifier_model", "gemma-3-1b-it@q8_0")
+	viper.SetDefault("lmstudio.classifier_model", "gemma-3-4b-it")
 	viper.SetDefault("server.port", 8080)
 
 	viper.AutomaticEnv()
