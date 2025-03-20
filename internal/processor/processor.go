@@ -47,6 +47,8 @@ func Process(prompt string) (string, error) {
 		strings.Join(config.Config.Actions, ", "),
 	)
 
+	fmt.Println(systemContent)
+
 	// Crear mensajes: uno system y uno user.
 	messages := []ChatMessage{
 		{
@@ -79,32 +81,32 @@ func Process(prompt string) (string, error) {
 
 	// Asignar los parámetros opcionales solo si son distintos de -1.
 	var temp *float32 = nil
-	if config.Config.Temperature != -1 {
-		temp = &config.Config.Temperature
+	if config.Config.ClassificatorTemperature != -1 {
+		temp = &config.Config.ClassificatorTemperature
 	}
 	var maxTokens *int = nil
-	if config.Config.MaxTokens != -1 {
-		maxTokens = &config.Config.MaxTokens
+	if config.Config.ClassificatorMaxTokens != -1 {
+		maxTokens = &config.Config.ClassificatorMaxTokens
 	}
 	var topK *int = nil
-	if config.Config.TopK != -1 {
-		topK = &config.Config.TopK
+	if config.Config.ClassificatorTopK != -1 {
+		topK = &config.Config.ClassificatorTopK
 	}
 	var topP *float32 = nil
-	if config.Config.TopP != -1 {
-		topP = &config.Config.TopP
+	if config.Config.ClassificatorTopP != -1 {
+		topP = &config.Config.ClassificatorTopP
 	}
 	var minP *float32 = nil
-	if config.Config.MinP != -1 {
-		minP = &config.Config.MinP
+	if config.Config.ClassificatorMinP != -1 {
+		minP = &config.Config.ClassificatorMinP
 	}
 	var repPenalty *float32 = nil
-	if config.Config.RepetitionPenalty != -1 {
-		repPenalty = &config.Config.RepetitionPenalty
+	if config.Config.ClassificatorRepetitionPenalty != -1 {
+		repPenalty = &config.Config.ClassificatorRepetitionPenalty
 	}
 
 	requestBody := LMChatRequest{
-		Model:             config.Config.ModelName,
+		Model:             config.Config.ClassificatorModelName,
 		Messages:          messages,
 		ResponseFormat:    responseFormat,
 		Temperature:       temp,
@@ -121,13 +123,13 @@ func Process(prompt string) (string, error) {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", config.Config.LMAPIURL, bytes.NewBuffer(reqBodyBytes))
+	req, err := http.NewRequest("POST", config.Config.ClassificatorLMAPIURL, bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if config.Config.APIKey != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Config.APIKey))
+	if config.Config.ClassificatorAPIKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Config.ClassificatorAPIKey))
 	}
 
 	client := &http.Client{}
