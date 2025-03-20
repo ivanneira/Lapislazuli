@@ -1,64 +1,38 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ivanneira/Lapislazuli/config"
 	"github.com/ivanneira/Lapislazuli/internal/coordinator"
-	"github.com/ivanneira/Lapislazuli/internal/models"
-	"github.com/ivanneira/Lapislazuli/internal/processor"
-	"github.com/sirupsen/logrus"
+
+	"github.com/gin-gonic/gin"
 )
 
+// RequestPayload representa el JSON de entrada.
+type RequestPayload struct {
+	Text string `json:"text"`
+}
+
 func main() {
-	// Configurar logger
-	logger := logrus.New()
-	logger.SetFormatter(&logrus.JSONFormatter{})
-	logger.SetLevel(logrus.InfoLevel)
+	// Cargar configuración desde .env
+	config.LoadConfig()
 
-	// Cargar configuración
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		logger.WithError(err).Fatal("Error al cargar configuración")
-	}
-
-	// Inicializar clientes y agentes
-	lmStudioClient := models.NewLMStudioClient(&cfg.LMStudio)
-	processorAgent := processor.NewAgent(lmStudioClient, logger)
-	coordinatorAgent := coordinator.NewAgent(processorAgent, logger)
-
-	// Configurar router HTTP
 	router := gin.Default()
-
-	// Endpoint de clasificación
-	router.POST("/classify", func(c *gin.Context) {
-		var request coordinator.Request
-		if err := c.BindJSON(&request); err != nil {
+	// Ruta configurada como /index
+	router.POST("/index", func(c *gin.Context) {
+		var payload RequestPayload
+		if err := c.ShouldBindJSON(&payload); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		response, err := coordinatorAgent.ProcessRequest(c.Request.Context(), &request)
-		if err != nil {
+		// Llama al coordinador para procesar el prompt
+		if err := coordinator.HandlePrompt(payload.Text); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		// Responder con el formato solicitado
-		c.JSON(http.StatusOK, response)
+		c.JSON(http.StatusOK, gin.H{"message": "procesado"})
 	})
 
-	// Endpoint de salud
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
-	// Iniciar servidor
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	logger.WithField("addr", addr).Info("Iniciando servidor HTTP")
-	if err := router.Run(addr); err != nil {
-		logger.WithError(err).Fatal("Error al iniciar servidor")
-	}
+	router.Run(":8080")
 }
