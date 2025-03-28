@@ -11,8 +11,29 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ivanneira/Lapislazuli/config"
+	"github.com/ivanneira/Lapislazuli/internal/logger"
+	"github.com/ivanneira/Lapislazuli/internal/mcp"
+)
+
+var (
+	bufferPool = sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
+
+	httpClient = &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
 )
 
 type ChatMessage struct {
@@ -55,45 +76,55 @@ type RequestPayload struct {
 	MinP        float32 `json:"min_p"`
 }
 
-// Process realiza la clasificación usando el modelo clasificador.
-func Process(prompt string) (string, error) {
-	// Construir el system prompt con las acciones disponibles.
-	systemContent := fmt.Sprintf(
-		"Acciones disponibles: %s. Clasifica el siguiente prompt devolviendo un JSON con el campo 'action'.",
-		strings.Join(config.Config.Actions, ", "),
-	)
+// Nueva función auxiliar para manejar solicitudes HTTP
+func sendLMRequest(requestBody LMChatRequest) (*LMResponse, error) {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufferPool.Put(buf)
 
-	// Crear mensajes: uno system y uno user.
-	messages := []ChatMessage{
-		{
-			Role:    "system",
-			Content: systemContent,
-		},
-		{
-			Role:    "user",
-			Content: prompt,
-		},
+	if err := json.NewEncoder(buf).Encode(requestBody); err != nil {
+		logger.Error("JSON encode error: %v", err)
+		return nil, err
 	}
 
-	// Definir el response_format para obtener la respuesta en JSON.
-	responseFormat := LMResponseFormat{
-		Type: "json_schema",
-		JSONSchema: map[string]interface{}{
-			"name":   "classification_response",
-			"strict": "true",
-			"schema": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"action": map[string]interface{}{
-						"type": "string",
-					},
-				},
-				"required": []string{"action"},
-			},
-		},
+	req, err := http.NewRequest("POST", config.Config.ClassificatorLMAPIURL, buf)
+	if err != nil {
+		logger.Error("HTTP request creation error: %v", err)
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if config.Config.ClassificatorAPIKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Config.ClassificatorAPIKey))
 	}
 
-	// Asignar los parámetros opcionales solo si son distintos de -1.
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		logger.Error("HTTP request error: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		logger.Error("Error en la llamada a LM Studio: %s", string(bodyBytes))
+		return nil, fmt.Errorf("error en la llamada a LM Studio: %s", string(bodyBytes))
+	}
+
+	var lmResp LMResponse
+	if err := json.NewDecoder(resp.Body).Decode(&lmResp); err != nil {
+		logger.Error("Error decoding response: %v", err)
+		return nil, err
+	}
+
+	if len(lmResp.Choices) == 0 {
+		return nil, fmt.Errorf("no se recibieron respuestas del modelo")
+	}
+
+	return &lmResp, nil
+}
+
+// Nueva función auxiliar para crear el cuerpo de la solicitud
+func createLMRequestBody(messages []ChatMessage) LMChatRequest {
 	var temp *float32 = nil
 	if config.Config.ClassificatorTemperature != -1 {
 		temp = &config.Config.ClassificatorTemperature
@@ -119,11 +150,25 @@ func Process(prompt string) (string, error) {
 		repPenalty = &config.Config.ClassificatorRepetitionPenalty
 	}
 
-	// Crear el cuerpo de la solicitud.
-	requestBody := LMChatRequest{
-		Model:             config.Config.ClassificatorModelName,
-		Messages:          messages,
-		ResponseFormat:    responseFormat,
+	return LMChatRequest{
+		Model:    config.Config.ClassificatorModelName,
+		Messages: messages,
+		ResponseFormat: LMResponseFormat{
+			Type: "json_schema",
+			JSONSchema: map[string]interface{}{
+				"name":   "classification_response",
+				"strict": "true",
+				"schema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"action": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					"required": []string{"action"},
+				},
+			},
+		},
 		Temperature:       temp,
 		MaxTokens:         maxTokens,
 		Stream:            false,
@@ -132,56 +177,58 @@ func Process(prompt string) (string, error) {
 		MinP:              minP,
 		RepetitionPenalty: repPenalty,
 	}
+}
 
-	// Serializar el cuerpo de la solicitud a JSON.
-	reqBodyBytes, err := json.Marshal(requestBody)
+// Process realiza la clasificación usando el modelo clasificador.
+func Process(prompt string) (string, error) {
+	messages := []ChatMessage{
+		{
+			Role: "system",
+			Content: fmt.Sprintf("Acciones disponibles: %s. Clasifica el siguiente prompt devolviendo un JSON con el campo 'action'.",
+				strings.Join(config.Config.Actions, ", ")),
+		},
+		{
+			Role:    "user",
+			Content: prompt,
+		},
+	}
+
+	requestBody := createLMRequestBody(messages)
+	resp, err := sendLMRequest(requestBody)
 	if err != nil {
 		return "", err
 	}
 
-	// Crear la solicitud HTTP.
-	req, err := http.NewRequest("POST", config.Config.ClassificatorLMAPIURL, bytes.NewBuffer(reqBodyBytes))
+	return resp.Choices[0].Message.Content, nil
+}
+
+// ProcessWithContext realiza la clasificación usando el contexto del modelo
+func ProcessWithContext(ctx mcp.ModelContext, prompt string) (string, error) {
+	logger.Info("Processing with context")
+
+	systemContent := fmt.Sprintf(
+		"Acciones disponibles: %s. Clasifica el siguiente prompt devolviendo un JSON con el campo 'action'.",
+		strings.Join(config.Config.Actions, ", "),
+	)
+	logger.Debug("System content: %s", systemContent)
+	ctx.AddMessage("system", systemContent)
+	ctx.AddMessage("user", prompt)
+
+	messages := make([]ChatMessage, 0)
+	for _, msg := range ctx.GetMessages() {
+		messages = append(messages, ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	requestBody := createLMRequestBody(messages)
+	resp, err := sendLMRequest(requestBody)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if config.Config.ClassificatorAPIKey != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Config.ClassificatorAPIKey))
-	}
 
-	// Enviar la solicitud.
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	// Manejar errores de respuesta.
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("error en la llamada a LM Studio: %s", string(bodyBytes))
-	}
-
-	// Leer la respuesta del servidor.
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	// Deserializar la respuesta.
-	var lmResp LMResponse
-	if err := json.Unmarshal(respBody, &lmResp); err != nil {
-		return "", err
-	}
-
-	// Verificar si se recibieron respuestas.
-	if len(lmResp.Choices) == 0 {
-		return "", fmt.Errorf("no se recibieron respuestas del modelo")
-	}
-
-	// Se espera que el mensaje devuelto contenga el JSON con el campo "action".
-	return lmResp.Choices[0].Message.Content, nil
+	return resp.Choices[0].Message.Content, nil
 }
 
 // Respond realiza una respuesta usando el modelo de respuestas.
@@ -207,17 +254,64 @@ func Respond(prompt string) (string, error) {
 	return makeRequest(apiURL, payload)
 }
 
+// RespondWithContext realiza una respuesta usando el contexto del modelo
+func RespondWithContext(ctx mcp.ModelContext, prompt string) (string, error) {
+	ctx.AddMessage("user", prompt)
+
+	messages := make([]ChatMessage, 0)
+	for _, msg := range ctx.GetMessages() {
+		messages = append(messages, ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	chatRequest := LMChatRequest{
+		Model:       os.Getenv("RESPONSE_MODEL_NAME"),
+		Messages:    messages,
+		Temperature: nil,
+		MaxTokens:   nil,
+		TopK:        nil,
+		TopP:        nil,
+		MinP:        nil,
+	}
+
+	body, err := json.Marshal(chatRequest)
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("Payload enviado: %s\n", string(body))
+
+	resp, err := http.Post(os.Getenv("RESPONSE_LM_API_URL"), "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ := ioutil.ReadAll(resp.Body)
+		fmt.Printf("Error en la respuesta del servidor: %s\n", string(responseBody))
+		return "", errors.New("error en la llamada al modelo LLM")
+	}
+
+	responseBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(responseBody), nil
+}
+
 // makeRequest realiza la llamada HTTP al modelo LLM.
 func makeRequest(apiURL string, payload RequestPayload) (string, error) {
-	// Crear el campo "messages" requerido por el servidor
 	messages := []ChatMessage{
 		{
-			Role:    "user", // El rol puede ser "user" para el mensaje del usuario
+			Role:    "user",
 			Content: payload.Prompt,
 		},
 	}
 
-	// Crear el nuevo payload con el campo "messages"
 	chatRequest := LMChatRequest{
 		Model:       payload.Model,
 		Messages:    messages,
@@ -228,30 +322,25 @@ func makeRequest(apiURL string, payload RequestPayload) (string, error) {
 		MinP:        &payload.MinP,
 	}
 
-	// Serializar el nuevo payload a JSON
 	body, err := json.Marshal(chatRequest)
 	if err != nil {
 		return "", err
 	}
 
-	// Log para depurar el payload
 	fmt.Printf("Payload enviado: %s\n", string(body))
 
-	// Realizar la solicitud HTTP
 	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	// Manejar errores de respuesta
 	if resp.StatusCode != http.StatusOK {
 		responseBody, _ := ioutil.ReadAll(resp.Body)
 		fmt.Printf("Error en la respuesta del servidor: %s\n", string(responseBody))
 		return "", errors.New("error en la llamada al modelo LLM")
 	}
 
-	// Leer la respuesta del servidor
 	responseBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err

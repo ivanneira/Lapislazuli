@@ -26,6 +26,22 @@ type ConfigStruct struct {
 
 var Config ConfigStruct
 
+// Función genérica para obtener valores del entorno
+func getEnvValue[T any](key string, parser func(string) (T, error), defaultValue T) T {
+	if val := os.Getenv(key); val != "" {
+		if parsed, err := parser(val); err == nil {
+			return parsed
+		}
+	}
+	return defaultValue
+}
+
+// Parsers específicos
+func parseFloat32(s string) (float32, error) {
+	v, err := strconv.ParseFloat(s, 32)
+	return float32(v), err
+}
+
 // LoadConfig carga la configuración desde el archivo .env.
 func LoadConfig() {
 	if err := godotenv.Load(); err != nil {
@@ -37,37 +53,16 @@ func LoadConfig() {
 	Config.ClassificatorModelName = os.Getenv("CLASSIFICATOR_MODEL_NAME")
 	Config.ClassificatorLMAPIURL = os.Getenv("CLASSIFICATOR_LM_API_URL")
 
-	actions := os.Getenv("ACTIONS")
-	if actions != "" {
+	if actions := os.Getenv("ACTIONS"); actions != "" {
 		Config.Actions = strings.Split(actions, ",")
 	} else {
 		Config.Actions = []string{"llamada", "mensaje", "correo"}
 	}
 
-	// Función auxiliar para parsear valores numéricos; si hay error o es vacío se asigna -1.
-	parseFloatOrDefault := func(key string) float32 {
-		val := os.Getenv(key)
-		if val != "" {
-			if f, err := strconv.ParseFloat(val, 32); err == nil {
-				return float32(f)
-			}
-		}
-		return -1
-	}
-	parseIntOrDefault := func(key string) int {
-		val := os.Getenv(key)
-		if val != "" {
-			if i, err := strconv.Atoi(val); err == nil {
-				return i
-			}
-		}
-		return -1
-	}
-
-	Config.ClassificatorTemperature = parseFloatOrDefault("CLASSIFICATOR_LM_TEMPERATURE")
-	Config.ClassificatorMaxTokens = parseIntOrDefault("CLASSIFICATOR_LM_MAX_TOKENS")
-	Config.ClassificatorTopK = parseIntOrDefault("CLASSIFICATOR_LM_TOP_K")
-	Config.ClassificatorTopP = parseFloatOrDefault("CLASSIFICATOR_LM_TOP_P")
-	Config.ClassificatorMinP = parseFloatOrDefault("CLASSIFICATOR_LM_MIN_P")
-	Config.ClassificatorRepetitionPenalty = parseFloatOrDefault("CLASSIFICATOR_LM_REPETITION_PENALTY")
+	Config.ClassificatorTemperature = getEnvValue("CLASSIFICATOR_LM_TEMPERATURE", parseFloat32, -1)
+	Config.ClassificatorMaxTokens = getEnvValue("CLASSIFICATOR_LM_MAX_TOKENS", strconv.Atoi, -1)
+	Config.ClassificatorTopK = getEnvValue("CLASSIFICATOR_LM_TOP_K", strconv.Atoi, -1)
+	Config.ClassificatorTopP = getEnvValue("CLASSIFICATOR_LM_TOP_P", parseFloat32, -1)
+	Config.ClassificatorMinP = getEnvValue("CLASSIFICATOR_LM_MIN_P", parseFloat32, -1)
+	Config.ClassificatorRepetitionPenalty = getEnvValue("CLASSIFICATOR_LM_REPETITION_PENALTY", parseFloat32, -1)
 }

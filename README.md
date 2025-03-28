@@ -1,6 +1,9 @@
 # Lapislazuli
 
+go mod tidy
+
 go build -o .\lapislazuli.exe .\cmd\server\  
+
 .\lapislazuli.exe
 
 # en /actions para probar
