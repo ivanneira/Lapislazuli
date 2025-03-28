@@ -8,6 +8,15 @@ import (
 	"sync"
 )
 
+// Códigos de color ANSI
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+)
+
 type Level int
 
 const (
@@ -33,22 +42,22 @@ type LogFunc func(format string, v ...interface{})
 var levelFuncs = map[Level]LogFunc{
 	DEBUG: func(format string, v ...interface{}) {
 		if enabled && level <= DEBUG {
-			logger.Printf("[DEBUG] "+format, v...)
+			logger.Printf(colorBlue+"[DEBUG] "+format+colorReset, v...)
 		}
 	},
 	INFO: func(format string, v ...interface{}) {
 		if enabled && level <= INFO {
-			logger.Printf("[INFO] "+format, v...)
+			logger.Printf(colorGreen+"[INFO] "+format+colorReset, v...)
 		}
 	},
 	WARN: func(format string, v ...interface{}) {
 		if enabled && level <= WARN {
-			logger.Printf("[WARN] "+format, v...)
+			logger.Printf(colorYellow+"[WARN] "+format+colorReset, v...)
 		}
 	},
 	ERROR: func(format string, v ...interface{}) {
 		if enabled && level <= ERROR {
-			logger.Printf("[ERROR] "+format, v...)
+			logger.Printf(colorRed+"[ERROR] "+format+colorReset, v...)
 		}
 	},
 }
@@ -84,9 +93,11 @@ func JSON(prefix string, v interface{}) {
 		return
 	}
 
-	Debug("%s:\n%s", prefix, buf.String())
+	Debug("=== %s ===\n%s", prefix, buf.String())
 }
 
 func init() {
 	SetEnabled(true)
+	SetLevel(DEBUG)                                // Asegurar que DEBUG esté activado por defecto
+	logger.SetFlags(log.Ltime | log.Lmicroseconds) // Mostrar timestamps más precisos
 }

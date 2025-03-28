@@ -78,25 +78,32 @@ type RequestPayload struct {
 
 // Nueva función auxiliar para manejar solicitudes HTTP
 func sendLMRequest(requestBody LMChatRequest) (*LMResponse, error) {
+	logger.Info("Iniciando petición LLM")
+	logger.JSON("Request body", requestBody)
+
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufferPool.Put(buf)
 
 	if err := json.NewEncoder(buf).Encode(requestBody); err != nil {
-		logger.Error("JSON encode error: %v", err)
+		logger.Error("Error codificando JSON: %v", err)
 		return nil, err
 	}
 
+	logger.Debug("URL destino: %s", config.Config.ClassificatorLMAPIURL)
 	req, err := http.NewRequest("POST", config.Config.ClassificatorLMAPIURL, buf)
 	if err != nil {
-		logger.Error("HTTP request creation error: %v", err)
+		logger.Error("Error creando request: %v", err)
 		return nil, err
 	}
+
+	logger.Debug("Configurando headers")
 	req.Header.Set("Content-Type", "application/json")
 	if config.Config.ClassificatorAPIKey != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Config.ClassificatorAPIKey))
 	}
 
+	logger.Info("Enviando petición HTTP")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		logger.Error("HTTP request error: %v", err)
@@ -104,6 +111,7 @@ func sendLMRequest(requestBody LMChatRequest) (*LMResponse, error) {
 	}
 	defer resp.Body.Close()
 
+	logger.Info("Respuesta recibida, estado: %d", resp.StatusCode)
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		logger.Error("Error en la llamada a LM Studio: %s", string(bodyBytes))
@@ -112,7 +120,7 @@ func sendLMRequest(requestBody LMChatRequest) (*LMResponse, error) {
 
 	var lmResp LMResponse
 	if err := json.NewDecoder(resp.Body).Decode(&lmResp); err != nil {
-		logger.Error("Error decoding response: %v", err)
+		logger.Error("Error decodificando respuesta: %v", err)
 		return nil, err
 	}
 
@@ -120,6 +128,7 @@ func sendLMRequest(requestBody LMChatRequest) (*LMResponse, error) {
 		return nil, fmt.Errorf("no se recibieron respuestas del modelo")
 	}
 
+	logger.JSON("Respuesta completa", lmResp)
 	return &lmResp, nil
 }
 
@@ -204,13 +213,15 @@ func Process(prompt string) (string, error) {
 
 // ProcessWithContext realiza la clasificación usando el contexto del modelo
 func ProcessWithContext(ctx mcp.ModelContext, prompt string) (string, error) {
-	logger.Info("Processing with context")
+	logger.Info("=== Iniciando procesamiento con contexto ===")
+	logger.Debug("Prompt recibido: %s", prompt)
+	logger.JSON("Contexto actual", ctx.GetMessages())
 
 	systemContent := fmt.Sprintf(
 		"Acciones disponibles: %s. Clasifica el siguiente prompt devolviendo un JSON con el campo 'action'.",
 		strings.Join(config.Config.Actions, ", "),
 	)
-	logger.Debug("System content: %s", systemContent)
+	logger.Debug("System prompt: %s", systemContent)
 	ctx.AddMessage("system", systemContent)
 	ctx.AddMessage("user", prompt)
 

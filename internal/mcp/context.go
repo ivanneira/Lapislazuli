@@ -37,6 +37,7 @@ type ModelContext interface {
 }
 
 type Context struct {
+	mu       sync.RWMutex
 	messages []Message
 	metadata ContextMetadata
 }
@@ -55,6 +56,9 @@ func NewContext(sessionID string) *Context {
 }
 
 func (c *Context) AddMessage(role, content string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	msg := messagePool.Get().(*Message)
 	msg.Role = role
 	msg.Content = content
@@ -71,23 +75,57 @@ func (c *Context) AddMessage(role, content string) {
 }
 
 func (c *Context) GetMessages() []Message {
-	return c.messages
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Crear una copia para evitar race conditions
+	messages := make([]Message, len(c.messages))
+	copy(messages, c.messages)
+	return messages
 }
 
 func (c *Context) GetMetadata() ContextMetadata {
-	return c.metadata
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Crear una copia profunda de metadata
+	properties := make(map[string]interface{}, len(c.metadata.Properties))
+	for k, v := range c.metadata.Properties {
+		properties[k] = v
+	}
+
+	return ContextMetadata{
+		SessionID:   c.metadata.SessionID,
+		Created:     c.metadata.Created,
+		LastUpdated: c.metadata.LastUpdated,
+		Properties:  properties,
+	}
 }
 
 func (c *Context) SetProperty(key string, value interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	logger.Debug("Setting property: %s=%v", key, value)
 	c.metadata.Properties[key] = value
+	c.metadata.LastUpdated = time.Now()
 }
 
 func (c *Context) GetProperty(key string) interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.metadata.Properties[key]
 }
 
 func (c *Context) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.messages = c.messages[:0] // Reutilizar slice subyacente
 	c.metadata.LastUpdated = time.Now()
+
+	// Limpiar propiedades manteniendo la capacidad
+	for k := range c.metadata.Properties {
+		delete(c.metadata.Properties, k)
+	}
 }
